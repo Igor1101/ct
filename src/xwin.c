@@ -61,17 +61,59 @@ void xwin_destroy(struct xwin *w) {
     xcb_disconnect(w->w_conn);
 }
 
+void xwin_paint_region(struct xwin *w, int r0, int c0, int r1, int c1) {
+
+}
+
+void xwin_repaint(struct xwin *w) {
+    xwin_paint_region(w, 0, 0, w->w_width_chars, w->w_height_chars);
+}
+
+void xwin_event_expose(struct xwin *w, const xcb_expose_event_t *e) {
+    xwin_paint_region(w,
+            e->x / CT_CHAR_WIDTH,
+            e->y / CT_CHAR_HEIGHT,
+            (e->x + e->width) / CT_CHAR_WIDTH,
+            (e->y + e->height) / CT_CHAR_HEIGHT);
+}
+
+void xwin_event_configure_notify(struct xwin *w, const xcb_configure_notify_event_t *e) {
+    int res = 0;
+
+    if (e->width && e->width != w->w_width) {
+        w->w_width = e->width;
+        w->w_width_chars = e->width / CT_CHAR_WIDTH;
+        res = 1;
+    }
+
+    if (e->height && e->height != w->w_height) {
+        w->w_height = e->height;
+        w->w_height_chars = e->height / CT_CHAR_HEIGHT;
+        res = 1;
+    }
+
+    if (res) {
+        // TODO: resize display buffers here
+    }
+}
+
 void xwin_poll_events(struct xwin *w) {
     xcb_generic_event_t *event;
 
     while ((event = xcb_wait_for_event(w->w_conn))) {
-        printf("Event %d\n", event->response_type & ~0x80);
 
         switch (event->response_type & ~0x80) {
+        case XCB_EXPOSE:
+            xwin_event_expose(w, (xcb_expose_event_t *) event);
+            break;
+        case XCB_CONFIGURE_NOTIFY:
+            xwin_event_configure_notify(w, (xcb_configure_notify_event_t *) event);
+            break;
         case XCB_UNMAP_NOTIFY:
             w->w_closed = 1;
             return;
         default:
+            printf("Event %d\n", event->response_type & ~0x80);
             break;
         }
 
