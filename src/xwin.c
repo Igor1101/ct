@@ -1,8 +1,52 @@
 #include "xwin.h"
+#include <hb-ft.h>
 #include <stdlib.h>
 #include <stdio.h>
 
+int xwin_font_ctx_create(struct xwin_font_ctx *f) {
+    FT_Error ft_error;
+
+    if ((ft_error = FT_Init_FreeType(&f->f_ft_library))) {
+        fprintf(stderr, "Failed to init freetype2\n");
+        return -1;
+    }
+
+    if ((ft_error = FT_New_Face(f->f_ft_library, "/home/alnyan/.local/share/fonts/font.ttf", 0, &f->f_ft_face))) {
+        fprintf(stderr, "Failed to load font face\n");
+        return -1;
+    }
+
+    if ((ft_error = FT_Set_Char_Size(f->f_ft_face, 0, 14 * 64, 0, 0))) {
+        fprintf(stderr, "Failed to set font size\n");
+        return -1;
+    }
+
+    if (!(f->f_hb_font = hb_ft_font_create(f->f_ft_face, NULL))) {
+        fprintf(stderr, "Failed to create harfbuzz font\n");
+        return -1;
+    }
+
+    if (!(f->f_hb_buffer = hb_buffer_create())) {
+        fprintf(stderr, "Failed to create harfbuzz buffer\n");
+        return -1;
+    }
+
+    return 0;
+}
+
+void xwin_font_ctx_destroy(struct xwin_font_ctx *f) {
+    hb_buffer_destroy(f->f_hb_buffer);
+    hb_font_destroy(f->f_hb_font);
+
+    FT_Done_Face(f->f_ft_face);
+    FT_Done_FreeType(f->f_ft_library);
+}
+
 int xwin_create(struct xwin *w, const char *title, int width, int height) {
+    if (xwin_font_ctx_create(&w->w_font) != 0) {
+        return -1;
+    }
+
     w->w_conn = xcb_connect(NULL, NULL);
 
     if (!w->w_conn) {
@@ -59,6 +103,8 @@ int xwin_create(struct xwin *w, const char *title, int width, int height) {
 
 void xwin_destroy(struct xwin *w) {
     xcb_disconnect(w->w_conn);
+
+    xwin_font_ctx_destroy(&w->w_font);
 }
 
 void xwin_paint_region(struct xwin *w, int r0, int c0, int r1, int c1) {
@@ -111,6 +157,7 @@ void xwin_poll_events(struct xwin *w) {
             break;
         case XCB_UNMAP_NOTIFY:
             w->w_closed = 1;
+            free(event);
             return;
         default:
             printf("Event %d\n", event->response_type & ~0x80);

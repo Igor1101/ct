@@ -2,18 +2,30 @@
 #include <xcb/xcb.h>
 #include <ft2build.h>
 #include FT_FREETYPE_H
+#include <hb.h>
 
 #define CT_CHAR_WIDTH   8
 #define CT_CHAR_HEIGHT  12
 
-struct xwin {
-    xcb_connection_t   *w_conn;
-    xcb_window_t        w_id;
-    const xcb_screen_t *w_screen;
-    int                 w_width, w_height;
-    int                 w_closed;
-    int                 w_width_chars, w_height_chars;
+struct xwin_font_ctx {
+    FT_Library          f_ft_library;
+    FT_Face             f_ft_face;
+    hb_font_t          *f_hb_font;
+    hb_buffer_t        *f_hb_buffer;
 };
+
+struct xwin {
+    xcb_connection_t       *w_conn;
+    xcb_window_t            w_id;
+    const xcb_screen_t     *w_screen;
+    int                     w_width, w_height;
+    int                     w_closed;
+    int                     w_width_chars, w_height_chars;
+    struct xwin_font_ctx    w_font;
+};
+
+int xwin_font_ctx_create(struct xwin_font_ctx *f);
+void xwin_font_ctx_destroy(struct xwin_font_ctx *f);
 
 int xwin_create(struct xwin *w, const char *title, int width, int height);
 void xwin_destroy(struct xwin *w);
