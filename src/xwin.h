@@ -1,5 +1,7 @@
 #pragma once
 #include <xcb/xcb.h>
+#include <ft2build.h>
+#include FT_FREETYPE_H
 
 #define CT_CHAR_WIDTH   8
 #define CT_CHAR_HEIGHT  12
