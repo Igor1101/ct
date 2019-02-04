@@ -1,6 +1,8 @@
 #include "xwin.h"
-#include <hb-ft.h>
 #include <cairo/cairo-ft.h>
+#include <sys/time.h>
+#include <assert.h>
+#include <hb-ft.h>
 #include <stdlib.h>
 #include <stdio.h>
 
@@ -18,6 +20,12 @@ static xcb_visualtype_t *s_get_screen_visualtype(const xcb_screen_t *screen) {
         }
     }
     return NULL;
+}
+
+static uint64_t s_millis(void) {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return tv.tv_sec * 1000 + tv.tv_usec / 1000;
 }
 
 int xwin_font_ctx_create(struct xwin_font_ctx *f) {
@@ -52,6 +60,9 @@ int xwin_font_ctx_create(struct xwin_font_ctx *f) {
         fprintf(stderr, "Failed to create font face for cairo font\n");
         return -1;
     }
+
+    assert(FT_IS_FIXED_WIDTH(f->f_ft_face));
+
 
     return 0;
 }
@@ -121,6 +132,16 @@ int xwin_create(struct xwin *w, const char *title, int width, int height) {
     w->w_graph.g_visualtype = s_get_screen_visualtype(w->w_screen);
     w->w_graph.g_surface = cairo_xcb_surface_create(w->w_conn, w->w_id, w->w_graph.g_visualtype, 1, 1);
 
+    // TODO: perform this in font init using FT. Somehow. This code sucks
+    cairo_text_extents_t text_extents;
+    cairo_t *cr = cairo_create(w->w_graph.g_surface);
+    cairo_set_font_face(cr, w->w_font.f_cairo_face);
+    cairo_set_font_size(cr, CT_FONT_SIZE);
+    cairo_text_extents(cr, "A", &text_extents);
+    cairo_destroy(cr);
+
+    w->w_font.f_char_width = text_extents.width;
+
     w->w_closed = 0;
 
     return 0;
@@ -132,42 +153,36 @@ void xwin_destroy(struct xwin *w) {
     xwin_font_ctx_destroy(&w->w_font);
 }
 
-void xwin_draw_text(struct xwin *w, cairo_t *cr, const char *text, int x, int y) {
+static void s_xwin_draw_text(struct xwin *w, cairo_t *cr, const char *text, cairo_glyph_t *cairo_glyphs) {
     struct xwin_font_ctx *f = &w->w_font;
 
-    hb_buffer_reset(f->f_hb_buffer);
+    hb_buffer_clear_contents(f->f_hb_buffer);
     hb_buffer_add_utf8(f->f_hb_buffer, text, -1, 0, -1);
-    hb_buffer_guess_segment_properties(f->f_hb_buffer);
+    hb_buffer_set_direction(f->f_hb_buffer, HB_DIRECTION_LTR);
+    hb_buffer_set_script(f->f_hb_buffer, HB_SCRIPT_LATIN);
+    hb_buffer_set_language(f->f_hb_buffer, hb_language_from_string("en", -1));
 
     hb_shape(f->f_hb_font, f->f_hb_buffer, NULL, 0);
 
     int len = hb_buffer_get_length(f->f_hb_buffer);
     const hb_glyph_info_t *glyph_info = hb_buffer_get_glyph_infos(f->f_hb_buffer, &len);
-    const hb_glyph_position_t *glyph_pos = hb_buffer_get_glyph_positions(f->f_hb_buffer, &len);
-    cairo_glyph_t *cairo_glyphs = cairo_glyph_allocate(len);
-    cairo_translate(cr, x, y);
-    cairo_set_source_rgb(cr, 1, 0, 0);
-    cairo_set_font_face(cr, w->w_font.f_cairo_face);
-    cairo_set_font_size(cr, CT_FONT_SIZE);
-    double px = 0;
-    double py = 0;
+
+    assert(len == strlen(text));
 
     for (int i = 0; i < len; ++i) {
+        if (text[i] == ' ') {
+            continue;
+        }
+
+        cairo_set_source_rgb(cr, 1, (float) i / len, 0);
+
         hb_codepoint_t gid = glyph_info[i].codepoint;
-
-        char glyph_name[64];
-        hb_font_get_glyph_name(f->f_hb_font, gid, glyph_name, sizeof(glyph_name));
-        printf("Render \"%s\"\n", glyph_name);
-
         cairo_glyphs[i].index = gid;
-        cairo_glyphs[i].x = px + glyph_pos[i].x_offset / 64.0;
-        cairo_glyphs[i].y = py + glyph_pos[i].y_offset / 64.0;
-        px += glyph_pos[i].x_advance / 64.0;
-        py += glyph_pos[i].y_advance / 64.0;
-    }
+        cairo_glyphs[i].x = i * f->f_char_width;
+        cairo_glyphs[i].y = 0;
 
-    cairo_show_glyphs(cr, cairo_glyphs, len);
-    cairo_glyph_free(cairo_glyphs);
+        cairo_show_glyphs(cr, &cairo_glyphs[i], 1);
+    }
 }
 
 void xwin_paint_region(struct xwin *w, int r0, int c0, int r1, int c1) {
@@ -175,14 +190,37 @@ void xwin_paint_region(struct xwin *w, int r0, int c0, int r1, int c1) {
 }
 
 void xwin_repaint(struct xwin *w) {
-    /*xwin_paint_region(w, 0, 0, w->w_width_chars, w->w_height_chars);*/
+    uint64_t t0, t1;
+    const struct xwin_font_ctx *f = &w->w_font;
+
     cairo_t *cr = cairo_create(w->w_graph.g_surface);
     cairo_set_source_rgb(cr, 0, 0, 0);
     cairo_paint(cr);
 
-    xwin_draw_text(w, cr, "A >>= B", 100, 100);
-    cairo_destroy(cr);
+    cairo_glyph_t *cairo_glyphs = cairo_glyph_allocate(w->w_width_chars);
+    cairo_save(cr);
+    cairo_set_font_face(cr, w->w_font.f_cairo_face);
+    cairo_set_font_size(cr, CT_FONT_SIZE);
+    cairo_translate(cr, CT_PAD_X, CT_PAD_Y);
+    char line_text[w->w_width_chars + 1];
+    for (int i = 0; i < w->w_width_chars / 5; ++i) {
+        strcpy(&line_text[i * 5], " >>= ");
+    }
+    line_text[sizeof(line_text) - 1] = 0;
+
+    t0 = s_millis();
+    for (int i = 0; i < w->w_height_chars; ++i) {
+        cairo_translate(cr, 0, CT_FONT_SIZE);
+        s_xwin_draw_text(w, cr, line_text, cairo_glyphs);
+    }
+    t1 = s_millis();
+    cairo_restore(cr);
+    cairo_glyph_free(cairo_glyphs);
+
     xcb_flush(w->w_conn);
+    cairo_destroy(cr);
+
+    printf("%d\n", t1 - t0);
 }
 
 void xwin_event_expose(struct xwin *w, const xcb_expose_event_t *e) {
@@ -199,13 +237,13 @@ void xwin_event_configure_notify(struct xwin *w, const xcb_configure_notify_even
 
     if (e->width && e->width != w->w_width) {
         w->w_width = e->width;
-        /*w->w_width_chars = e->width / CT_CHAR_WIDTH;*/
+        w->w_width_chars = e->width / w->w_font.f_char_width;
         res = 1;
     }
 
     if (e->height && e->height != w->w_height) {
         w->w_height = e->height;
-        /*w->w_height_chars = e->height / CT_CHAR_HEIGHT;*/
+        w->w_height_chars = e->height / CT_FONT_SIZE;
         res = 1;
     }
 

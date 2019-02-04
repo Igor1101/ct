@@ -6,9 +6,9 @@
 #include <cairo/cairo.h>
 #include <cairo/cairo-xcb.h>
 
-//#define CT_CHAR_WIDTH   8
-//#define CT_CHAR_HEIGHT  12
 #define CT_FONT_SIZE 16
+#define CT_PAD_X     2
+#define CT_PAD_Y     2
 
 struct xwin_font_ctx {
     FT_Library          f_ft_library;
@@ -16,6 +16,7 @@ struct xwin_font_ctx {
     hb_font_t          *f_hb_font;
     hb_buffer_t        *f_hb_buffer;
     cairo_font_face_t  *f_cairo_face;
+    double              f_char_width;
 };
 
 struct xwin_graph_ctx {
@@ -41,7 +42,7 @@ int xwin_font_ctx_load_glyph(struct xwin_font_ctx *f);
 int xwin_create(struct xwin *w, const char *title, int width, int height);
 void xwin_destroy(struct xwin *w);
 
-void xwin_draw_text(struct xwin *w, cairo_t *cr, const char *text, int x, int y);
+void xwin_draw_text(struct xwin *w, cairo_t *cr, const char *text);
 void xwin_paint_region(struct xwin *w, int r0, int c0, int r1, int c1);
 void xwin_repaint(struct xwin *w);
 
