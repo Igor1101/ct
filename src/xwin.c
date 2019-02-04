@@ -75,7 +75,40 @@ void xwin_font_ctx_destroy(struct xwin_font_ctx *f) {
     FT_Done_FreeType(f->f_ft_library);
 }
 
+int xwin_tbuf_create(struct xwin_tbuf *t, int rows, int cols) {
+    t->t_rows = rows;
+    t->t_cols = cols;
+    t->t_lines = malloc(sizeof(char *) * rows);
+    t->t_dirty = malloc(sizeof(int) * rows);
+    t->t_vlines = 0;
+
+    return !t->t_lines;
+}
+
+void xwin_tbuf_puts(struct xwin_tbuf *t, const char *line) {
+    if (t->t_vlines + 1 == t->t_rows) {
+        abort();
+    }
+    assert(strlen(line) < t->t_cols);
+
+    int r = t->t_vlines++;
+    t->t_lines[r] = strdup(line);
+    t->t_dirty[r] = 1;
+}
+
+void xwin_tbuf_dirty_all(struct xwin_tbuf *t) {
+    memset(t->t_dirty, 0xFF, t->t_rows * sizeof(int));
+}
+
+void xwin_tbuf_dirty(struct xwin_tbuf *t, int l) {
+    t->t_dirty[l] = 1;
+}
+
 int xwin_create(struct xwin *w, const char *title, int width, int height) {
+    if (xwin_tbuf_create(&w->w_tbuf, 80, 25) != 0) {
+        return -1;
+    }
+
     if (xwin_font_ctx_create(&w->w_font) != 0) {
         return -1;
     }
@@ -108,7 +141,7 @@ int xwin_create(struct xwin *w, const char *title, int width, int height) {
     uint32_t window_hint_mask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK;
     const uint32_t window_hints[] = {
         w->w_screen->black_pixel,
-        XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_STRUCTURE_NOTIFY
+        XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_STRUCTURE_NOTIFY | XCB_EVENT_MASK_KEY_PRESS
     };
 
     xcb_create_window(w->w_conn,
@@ -156,11 +189,10 @@ void xwin_destroy(struct xwin *w) {
 static void s_xwin_draw_text(struct xwin *w, cairo_t *cr, const char *text, cairo_glyph_t *cairo_glyphs) {
     struct xwin_font_ctx *f = &w->w_font;
 
-    hb_buffer_clear_contents(f->f_hb_buffer);
+    hb_buffer_reset(f->f_hb_buffer);
     hb_buffer_add_utf8(f->f_hb_buffer, text, -1, 0, -1);
     hb_buffer_set_direction(f->f_hb_buffer, HB_DIRECTION_LTR);
     hb_buffer_set_script(f->f_hb_buffer, HB_SCRIPT_LATIN);
-    hb_buffer_set_language(f->f_hb_buffer, hb_language_from_string("en", -1));
 
     hb_shape(f->f_hb_font, f->f_hb_buffer, NULL, 0);
 
@@ -185,51 +217,48 @@ static void s_xwin_draw_text(struct xwin *w, cairo_t *cr, const char *text, cair
     }
 }
 
-void xwin_paint_region(struct xwin *w, int r0, int c0, int r1, int c1) {
-
-}
-
-void xwin_repaint(struct xwin *w) {
+static void s_xwin_paint(struct xwin *w, cairo_t *cr) {
     uint64_t t0, t1;
     const struct xwin_font_ctx *f = &w->w_font;
-
-    cairo_t *cr = cairo_create(w->w_graph.g_surface);
-    cairo_set_source_rgb(cr, 0, 0, 0);
-    cairo_paint(cr);
 
     cairo_glyph_t *cairo_glyphs = cairo_glyph_allocate(w->w_width_chars);
     cairo_save(cr);
     cairo_set_font_face(cr, w->w_font.f_cairo_face);
     cairo_set_font_size(cr, CT_FONT_SIZE);
     cairo_translate(cr, CT_PAD_X, CT_PAD_Y);
-    char line_text[w->w_width_chars + 1];
-    for (int i = 0; i < w->w_width_chars / 5; ++i) {
-        strcpy(&line_text[i * 5], " >>= ");
-    }
-    line_text[sizeof(line_text) - 1] = 0;
+
+    assert(w->w_tbuf.t_vlines < w->w_tbuf.t_rows);
 
     t0 = s_millis();
-    for (int i = 0; i < w->w_height_chars; ++i) {
+    for (int i = 0; i < w->w_tbuf.t_vlines; ++i) {
         cairo_translate(cr, 0, CT_FONT_SIZE);
-        s_xwin_draw_text(w, cr, line_text, cairo_glyphs);
+        if (w->w_tbuf.t_dirty[i]) {
+            s_xwin_draw_text(w, cr, w->w_tbuf.t_lines[i], cairo_glyphs);
+            w->w_tbuf.t_dirty[i] = 0;
+        }
     }
     t1 = s_millis();
     cairo_restore(cr);
     cairo_glyph_free(cairo_glyphs);
 
-    xcb_flush(w->w_conn);
-    cairo_destroy(cr);
-
     printf("%d\n", t1 - t0);
 }
 
+void xwin_repaint(struct xwin *w) {
+    cairo_t *cr = cairo_create(w->w_graph.g_surface);
+    s_xwin_paint(w, cr);
+    xcb_flush(w->w_conn);
+    cairo_destroy(cr);
+}
+
 void xwin_event_expose(struct xwin *w, const xcb_expose_event_t *e) {
+    int r0 = e->x / w->w_font.f_char_width;
+    int r1 = r0 + 1 + e->width / w->w_font.f_char_width;
+    for (int i = r0; i < r1 && i < w->w_tbuf.t_rows; ++i) {
+        xwin_tbuf_dirty(&w->w_tbuf, i);
+    }
+
     xwin_repaint(w);
-    /*xwin_paint_region(w,*/
-            /*e->x / CT_CHAR_WIDTH,*/
-            /*e->y / CT_CHAR_HEIGHT,*/
-            /*(e->x + e->width) / CT_CHAR_WIDTH,*/
-            /*(e->y + e->height) / CT_CHAR_HEIGHT);*/
 }
 
 void xwin_event_configure_notify(struct xwin *w, const xcb_configure_notify_event_t *e) {
@@ -249,6 +278,7 @@ void xwin_event_configure_notify(struct xwin *w, const xcb_configure_notify_even
 
     if (res) {
         cairo_xcb_surface_set_size(w->w_graph.g_surface, w->w_width, w->w_height);
+        xwin_tbuf_dirty_all(&w->w_tbuf);
     }
 }
 
@@ -263,6 +293,10 @@ void xwin_poll_events(struct xwin *w) {
             break;
         case XCB_CONFIGURE_NOTIFY:
             xwin_event_configure_notify(w, (xcb_configure_notify_event_t *) event);
+            break;
+        case XCB_KEY_PRESS:
+            xwin_tbuf_puts(&w->w_tbuf, "Line");
+            xwin_repaint(w);
             break;
         case XCB_UNMAP_NOTIFY:
             w->w_closed = 1;

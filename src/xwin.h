@@ -24,6 +24,13 @@ struct xwin_graph_ctx {
     xcb_visualtype_t   *g_visualtype;
 };
 
+struct xwin_tbuf {
+    char **t_lines;
+    int *t_dirty;
+    int t_vlines;
+    int t_rows, t_cols;
+};
+
 struct xwin {
     xcb_connection_t           *w_conn;
     xcb_window_t                w_id;
@@ -33,11 +40,18 @@ struct xwin {
     int                         w_width_chars, w_height_chars;
     struct xwin_font_ctx        w_font;
     struct xwin_graph_ctx       w_graph;
+    struct xwin_tbuf            w_tbuf;
 };
 
 int xwin_font_ctx_create(struct xwin_font_ctx *f);
 void xwin_font_ctx_destroy(struct xwin_font_ctx *f);
 int xwin_font_ctx_load_glyph(struct xwin_font_ctx *f);
+
+int xwin_tbuf_create(struct xwin_tbuf *t, int rows, int cols);
+int xwin_tbuf_resize(struct xwin_tbuf *t, int rows, int cols);
+void xwin_tbuf_dirty(struct xwin_tbuf *t, int row);
+void xwin_tbuf_dirty_all(struct xwin_tbuf *t);
+void xwin_tbuf_puts(struct xwin_tbuf *t, const char *line);
 
 int xwin_create(struct xwin *w, const char *title, int width, int height);
 void xwin_destroy(struct xwin *w);
