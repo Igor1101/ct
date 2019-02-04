@@ -1,2 +1,2 @@
 all:
-	gcc `pkg-config --libs --cflags xcb freetype2 harfbuzz xcb-render` -o ct src/ct.c src/xwin.c
+	gcc `pkg-config --libs --cflags xcb freetype2 harfbuzz cairo cairo-xcb` -o ct src/ct.c src/xwin.c
