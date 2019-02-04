@@ -80,20 +80,39 @@ int xwin_tbuf_create(struct xwin_tbuf *t, int rows, int cols) {
     t->t_cols = cols;
     t->t_lines = malloc(sizeof(char *) * rows);
     t->t_dirty = malloc(sizeof(int) * rows);
-    t->t_vlines = 0;
 
     return !t->t_lines;
 }
 
-void xwin_tbuf_puts(struct xwin_tbuf *t, const char *line) {
-    if (t->t_vlines + 1 == t->t_rows) {
-        abort();
-    }
-    assert(strlen(line) < t->t_cols);
+void xwin_tbuf_scrollup(struct xwin_tbuf *t) {
+    char *line0 = t->t_lines[0];
 
-    int r = t->t_vlines++;
-    t->t_lines[r] = strdup(line);
-    t->t_dirty[r] = 1;
+    for (int i = 0; i < t->t_rows - 1; ++i) {
+        t->t_lines[i] = t->t_lines[i + 1];
+    }
+    t->t_lines[t->t_rows - 1] = NULL;
+
+    xwin_tbuf_dirty_all(t);
+
+    free(line0);
+}
+
+void xwin_tbuf_mvaddstr(struct xwin_tbuf *t, int y, int x, const char *text) {
+    assert(y >= 0 && y < t->t_rows && x >= 0);
+    size_t len = strlen(text);
+    assert(x + len < t->t_cols); // TODO: implement line wrapping
+
+    if (!t->t_lines[y]) {
+        t->t_lines[y] = malloc(t->t_cols + 1);
+        // Pad with spaces before the line, like this:
+        // ' ', ' ', ' ', 'T', 'e', 'x', 't'
+        memset(t->t_lines[y], ' ', x);
+        // Make sure we're null-terminated
+        t->t_lines[y][t->t_cols] = 0;
+    }
+
+    strncpy(t->t_lines[y], text, len);
+    t->t_dirty[y] = 1;
 }
 
 void xwin_tbuf_dirty_all(struct xwin_tbuf *t) {
@@ -105,7 +124,7 @@ void xwin_tbuf_dirty(struct xwin_tbuf *t, int l) {
 }
 
 int xwin_create(struct xwin *w, const char *title, int width, int height) {
-    if (xwin_tbuf_create(&w->w_tbuf, 80, 25) != 0) {
+    if (xwin_tbuf_create(&w->w_tbuf, 25, 80) != 0) {
         return -1;
     }
 
@@ -186,7 +205,7 @@ void xwin_destroy(struct xwin *w) {
     xwin_font_ctx_destroy(&w->w_font);
 }
 
-static void s_xwin_draw_text(struct xwin *w, cairo_t *cr, const char *text, cairo_glyph_t *cairo_glyphs) {
+static void s_xwin_draw_text(struct xwin *w, cairo_t *cr, double x, double y, const char *text, cairo_glyph_t *cairo_glyphs) {
     struct xwin_font_ctx *f = &w->w_font;
 
     hb_buffer_reset(f->f_hb_buffer);
@@ -206,12 +225,16 @@ static void s_xwin_draw_text(struct xwin *w, cairo_t *cr, const char *text, cair
             continue;
         }
 
+        cairo_set_source_rgb(cr, 0, 1, 0);
+        cairo_rectangle(cr, x + i * f->f_char_width, y - CT_FONT_SIZE, f->f_char_width, CT_FONT_SIZE);
+        cairo_fill(cr);
+
         cairo_set_source_rgb(cr, 1, (float) i / len, 0);
 
         hb_codepoint_t gid = glyph_info[i].codepoint;
         cairo_glyphs[i].index = gid;
-        cairo_glyphs[i].x = i * f->f_char_width;
-        cairo_glyphs[i].y = 0;
+        cairo_glyphs[i].x = x + i * f->f_char_width;
+        cairo_glyphs[i].y = y;
 
         cairo_show_glyphs(cr, &cairo_glyphs[i], 1);
     }
@@ -225,21 +248,25 @@ static void s_xwin_paint(struct xwin *w, cairo_t *cr) {
     cairo_save(cr);
     cairo_set_font_face(cr, w->w_font.f_cairo_face);
     cairo_set_font_size(cr, CT_FONT_SIZE);
-    cairo_translate(cr, CT_PAD_X, CT_PAD_Y);
-
-    assert(w->w_tbuf.t_vlines < w->w_tbuf.t_rows);
 
     t0 = s_millis();
-    for (int i = 0; i < w->w_tbuf.t_vlines; ++i) {
-        cairo_translate(cr, 0, CT_FONT_SIZE);
+    for (int i = 0; i < w->w_tbuf.t_rows; ++i) {
+        if (!w->w_tbuf.t_lines[i]) {
+            continue;
+        }
+
         if (w->w_tbuf.t_dirty[i]) {
-            s_xwin_draw_text(w, cr, w->w_tbuf.t_lines[i], cairo_glyphs);
+            s_xwin_draw_text(w, cr, CT_PAD_X, CT_PAD_Y + i * CT_FONT_SIZE + CT_FONT_SIZE, w->w_tbuf.t_lines[i], cairo_glyphs);
             w->w_tbuf.t_dirty[i] = 0;
         }
     }
     t1 = s_millis();
     cairo_restore(cr);
     cairo_glyph_free(cairo_glyphs);
+
+    cairo_set_source_rgb(cr, 1, 0, 0);
+    cairo_rectangle(cr, 0, 0, w->w_tbuf.t_cols * f->f_char_width, w->w_tbuf.t_rows * CT_FONT_SIZE);
+    cairo_stroke(cr);
 
     printf("%d\n", t1 - t0);
 }
@@ -295,7 +322,17 @@ void xwin_poll_events(struct xwin *w) {
             xwin_event_configure_notify(w, (xcb_configure_notify_event_t *) event);
             break;
         case XCB_KEY_PRESS:
-            xwin_tbuf_puts(&w->w_tbuf, "Line");
+            {
+                static int counter = 0;
+                static int y = 0;
+                char buf[128];
+                snprintf(buf, sizeof(buf), "Line %d", counter++);
+                if (y == w->w_tbuf.t_rows) {
+                    xwin_tbuf_scrollup(&w->w_tbuf);
+                    --y;
+                }
+                xwin_tbuf_mvaddstr(&w->w_tbuf, y++, 0, buf);
+            }
             xwin_repaint(w);
             break;
         case XCB_UNMAP_NOTIFY:

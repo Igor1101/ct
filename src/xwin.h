@@ -26,8 +26,8 @@ struct xwin_graph_ctx {
 
 struct xwin_tbuf {
     char **t_lines;
+    int **t_vis_attrs;
     int *t_dirty;
-    int t_vlines;
     int t_rows, t_cols;
 };
 
@@ -51,7 +51,8 @@ int xwin_tbuf_create(struct xwin_tbuf *t, int rows, int cols);
 int xwin_tbuf_resize(struct xwin_tbuf *t, int rows, int cols);
 void xwin_tbuf_dirty(struct xwin_tbuf *t, int row);
 void xwin_tbuf_dirty_all(struct xwin_tbuf *t);
-void xwin_tbuf_puts(struct xwin_tbuf *t, const char *line);
+void xwin_tbuf_scrollup(struct xwin_tbuf *t);
+void xwin_tbuf_mvaddstr(struct xwin_tbuf *t, int row, int col, const char *text);
 
 int xwin_create(struct xwin *w, const char *title, int width, int height);
 void xwin_destroy(struct xwin *w);
