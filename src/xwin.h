@@ -1,6 +1,5 @@
 #pragma once
 #include <xcb/xcb.h>
-#include <xcb/render.h>
 #include <ft2build.h>
 #include FT_FREETYPE_H
 #include <hb.h>
@@ -23,12 +22,11 @@ struct xwin {
     int                         w_closed;
     int                         w_width_chars, w_height_chars;
     struct xwin_font_ctx        w_font;
-    xcb_gc_t                    w_gc_back, w_gc_fore;
-    xcb_render_pictformat_t     w_render_pictformat, w_render_win_format, w_render_alpha_format;
 };
 
 int xwin_font_ctx_create(struct xwin_font_ctx *f);
 void xwin_font_ctx_destroy(struct xwin_font_ctx *f);
+int xwin_font_ctx_load_glyph(struct xwin_font_ctx *f);
 
 int xwin_create(struct xwin *w, const char *title, int width, int height);
 void xwin_destroy(struct xwin *w);

@@ -3,63 +3,6 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-static xcb_render_pictformat_t s_get_visual_render_pictformat(xcb_render_query_pict_formats_reply_t *reply,
-                                                              xcb_render_pictforminfo_t *formats,
-                                                              xcb_visualid_t visual_id) {
-    xcb_render_pictscreen_iterator_t screen_it;
-    xcb_render_pictscreen_t         *cscreen;
-    xcb_render_pictdepth_iterator_t  depth_it;
-    xcb_render_pictdepth_t          *cdepth;
-    xcb_render_pictvisual_iterator_t visual_it;
-    xcb_render_pictvisual_t         *cvisual;
-
-    for (screen_it = xcb_render_query_pict_formats_screens_iterator(reply);
-         screen_it.rem;
-         xcb_render_pictscreen_next(&screen_it)) {
-        cscreen = screen_it.data;
-
-        for (depth_it = xcb_render_pictscreen_depths_iterator(cscreen);
-             depth_it.rem;
-             xcb_render_pictdepth_next(&depth_it)) {
-            cdepth = depth_it.data;
-
-            for (visual_it = xcb_render_pictdepth_visuals_iterator(cdepth);
-                 visual_it.rem;
-                 xcb_render_pictvisual_next(&visual_it)) {
-                cvisual = visual_it.data;
-
-                if (cvisual->visual == visual_id) {
-                    return cvisual->format;
-                }
-            }
-        }
-    }
-
-    return 0;
-}
-
-static xcb_render_pictforminfo_t *s_get_pictforminfo(xcb_render_query_pict_formats_reply_t *reply,
-                                                     xcb_render_pictforminfo_t *query) {
-    for (xcb_render_pictforminfo_iterator_t it = xcb_render_query_pict_formats_formats_iterator(reply);
-         it.rem;
-         xcb_render_pictforminfo_next(&it)) {
-        xcb_render_pictforminfo_t *cformat = it.data;
-
-        if (query->type != cformat->type ||
-            (query->depth != cformat->depth) ||
-            (query->direct.red_mask && query->direct.red_mask != cformat->direct.red_mask) ||
-            (query->direct.green_mask && query->direct.green_mask != cformat->direct.green_mask) ||
-            (query->direct.blue_mask && query->direct.blue_mask != cformat->direct.blue_mask) ||
-            (query->direct.alpha_mask && query->direct.alpha_mask != cformat->direct.alpha_mask)) {
-            continue;
-        }
-
-        return cformat;
-    }
-
-    return NULL;
-}
-
 int xwin_font_ctx_create(struct xwin_font_ctx *f) {
     FT_Error ft_error;
 
@@ -152,65 +95,6 @@ int xwin_create(struct xwin *w, const char *title, int width, int height) {
     xcb_map_window(w->w_conn, w->w_id);
 
     xcb_flush(w->w_conn);
-
-    // Check XCB-render version
-    xcb_render_query_version_cookie_t version_cookie;
-    xcb_render_query_version_reply_t *version_reply;
-
-    version_cookie = xcb_render_query_version(w->w_conn, XCB_RENDER_MAJOR_VERSION, XCB_RENDER_MINOR_VERSION);
-    version_reply = xcb_render_query_version_reply(w->w_conn, version_cookie, 0);
-
-    if (!version_reply) {
-        return -1;
-    }
-
-    printf("XCB render version %d.%d\n", version_reply->major_version, version_reply->minor_version);
-
-    free(version_reply);
-
-    // w->w_render_pictformat
-    xcb_render_query_pict_formats_cookie_t pictformats_cookie;
-    xcb_render_query_pict_formats_reply_t *pictformats_reply;
-    xcb_render_pictforminfo_t *pictformats;
-
-    pictformats_cookie = xcb_render_query_pict_formats(w->w_conn);
-    pictformats_reply = xcb_render_query_pict_formats_reply(w->w_conn, pictformats_cookie, NULL);
-
-    if (!pictformats_reply) {
-        return -1;
-    }
-
-    pictformats = xcb_render_query_pict_formats_formats(pictformats_reply);
-
-    for (int i = 0; i < pictformats_reply->num_formats; ++i) {
-        if (pictformats[i].type == XCB_RENDER_PICT_TYPE_DIRECT &&
-            pictformats[i].depth == 32) {
-            w->w_render_pictformat = pictformats[i].id;
-            break;
-        }
-    }
-
-    w->w_render_win_format = s_get_visual_render_pictformat(pictformats_reply, pictformats, w->w_screen->root_visual);
-
-    // w->w_render_pictforminfo
-    xcb_render_pictforminfo_t *alpha_forminfo_ptr, pictforminfo_query;
-    xcb_render_pictformat_t    alpha_mask_format;
-
-    pictforminfo_query.id = 0;
-    pictforminfo_query.type = XCB_RENDER_PICT_TYPE_DIRECT;
-    pictforminfo_query.depth = 8;
-    pictforminfo_query.direct.red_mask = 0;
-    pictforminfo_query.direct.green_mask = 0;
-    pictforminfo_query.direct.blue_mask = 0;
-    pictforminfo_query.direct.alpha_mask = 255;
-
-    if (!(alpha_forminfo_ptr = s_get_pictforminfo(pictformats_reply, &pictforminfo_query))) {
-        return -1;
-    }
-
-    w->w_render_alpha_format = alpha_forminfo_ptr->id;
-
-    free(pictformats_reply);
 
     w->w_closed = 0;
 
