@@ -24,6 +24,11 @@ struct xwin_graph_ctx {
     xcb_visualtype_t   *g_visualtype;
 };
 
+struct xwin_input_ctx {
+    uint16_t            i_xkb_version_major, i_xkb_version_minor;
+    uint8_t             i_xkb_base_event_out, i_xkb_base_event_err;
+};
+
 struct xwin_tbuf {
     char **t_lines;
     int **t_vis_attrs;
@@ -54,6 +59,8 @@ void xwin_tbuf_dirty(struct xwin_tbuf *t, int row);
 void xwin_tbuf_dirty_all(struct xwin_tbuf *t);
 void xwin_tbuf_scrollup(struct xwin_tbuf *t);
 void xwin_tbuf_move(struct xwin_tbuf *t, int t_cy, int t_cx);
+
+int xwin_input_ctx_create(struct xwin_input_ctx *i);
 
 int xwin_create(struct xwin *w, const char *title, int width, int height);
 void xwin_destroy(struct xwin *w);
