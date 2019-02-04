@@ -29,6 +29,7 @@ struct xwin_tbuf {
     int **t_vis_attrs;
     int *t_dirty;
     int t_rows, t_cols;
+    int t_cx, t_cy;
 };
 
 struct xwin {
@@ -52,7 +53,7 @@ int xwin_tbuf_resize(struct xwin_tbuf *t, int rows, int cols);
 void xwin_tbuf_dirty(struct xwin_tbuf *t, int row);
 void xwin_tbuf_dirty_all(struct xwin_tbuf *t);
 void xwin_tbuf_scrollup(struct xwin_tbuf *t);
-void xwin_tbuf_mvaddstr(struct xwin_tbuf *t, int row, int col, const char *text);
+void xwin_tbuf_move(struct xwin_tbuf *t, int t_cy, int t_cx);
 
 int xwin_create(struct xwin *w, const char *title, int width, int height);
 void xwin_destroy(struct xwin *w);
