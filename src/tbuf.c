@@ -85,7 +85,7 @@ void xwin_tbuf_putc(struct xwin_tbuf *t, wchar_t c, int attr) {
                     ++t->t_cy;
                 } else {
                     for (int i = oldc; i < newc; ++i) {
-                        xwin_tbuf_putc(t, ' ', 127);
+                        xwin_tbuf_putc(t, ' ', attr);
                     }
                 }
             }
