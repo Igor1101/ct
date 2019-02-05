@@ -63,6 +63,7 @@ void xwin_tbuf_dirty(struct xwin_tbuf *t, int row);
 void xwin_tbuf_dirty_all(struct xwin_tbuf *t);
 void xwin_tbuf_scrollup(struct xwin_tbuf *t);
 void xwin_tbuf_move(struct xwin_tbuf *t, int t_cy, int t_cx);
+void xwin_tbuf_putc(struct xwin_tbuf *t, char c, int a);
 
 int xwin_input_ctx_create(struct xwin_input_ctx *i, struct xwin *w);
 
@@ -75,5 +76,4 @@ void xwin_repaint(struct xwin *w);
 
 void xwin_poll_events(struct xwin *w);
 void xwin_event_configure_notify(struct xwin *w, const XConfigureEvent *e);
-//void xwin_event_configure_notify(struct xwin *w, const xcb_configure_notify_event_t *e);
-//void xwin_event_expose(struct xwin *w, const xcb_expose_event_t *e);
+void xwin_event_key_press(struct xwin *w, XKeyPressedEvent *e);

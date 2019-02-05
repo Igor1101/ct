@@ -283,16 +283,6 @@ void xwin_repaint(struct xwin *w) {
     cairo_destroy(cr);
 }
 
-/*void xwin_event_expose(struct xwin *w, const xcb_expose_event_t *e) {*/
-    /*int r0 = e->x / w->w_font.f_char_width;*/
-    /*int r1 = r0 + 1 + e->width / w->w_font.f_char_width;*/
-    /*for (int i = r0; i < r1 && i < w->w_tbuf.t_rows; ++i) {*/
-        /*xwin_tbuf_dirty(&w->w_tbuf, i);*/
-    /*}*/
-
-    /*xwin_repaint(w);*/
-/*}*/
-
 void xwin_event_configure_notify(struct xwin *w, const XConfigureEvent *e) {
     int res = 0;
 
@@ -312,6 +302,26 @@ void xwin_event_configure_notify(struct xwin *w, const XConfigureEvent *e) {
         cairo_xcb_surface_set_size(w->w_graph.g_surface, w->w_width, w->w_height);
         xwin_tbuf_resize(&w->w_tbuf, w->w_height_chars, w->w_width_chars);
     }
+}
+
+void xwin_event_key_press(struct xwin *w, XKeyPressedEvent *e) {
+    char buf[16];
+    int count = 0;
+    Status status = 0;
+    KeySym keysym;
+    count = Xutf8LookupString(w->w_input.i_xic, e, buf, 16, &keysym, &status);
+
+    if (status == XBufferOverflow) {
+        return;
+    }
+
+    if (count) {
+        for (int i = 0; i < count; ++i) {
+            xwin_tbuf_putc(&w->w_tbuf, buf[i], 0);
+        }
+    }
+
+    xwin_repaint(w);
 }
 
 void xwin_poll_events(struct xwin *w) {
@@ -358,55 +368,10 @@ void xwin_poll_events(struct xwin *w) {
         }
 
         if (event.type == KeyPress) {
-            int count = 0;
-            KeySym keysym = 0;
-            char buf[20];
-            Status status = 0;
-            count = Xutf8LookupString(w->w_input.i_xic, (XKeyPressedEvent*)&event, buf, 20, &keysym, &status);
-
-            printf("count: %d\n", count);
-            if (status==XBufferOverflow)
-                printf("BufferOverflow\n");
-
-            if (count)
-                printf("buffer: %.*s\n", count, buf);
-
-            if (status == XLookupKeySym || status == XLookupBoth) {
-                printf("status: %d\n", status);
-            }
-            printf("pressed KEY: %d\n", (int)keysym);
+            xwin_event_key_press(w, (XKeyPressedEvent *) &event);
             continue;
         }
 
         printf("EVENT\n");
     }
-    /*xcb_generic_event_t *event;*/
-
-    /*while ((event = xcb_wait_for_event(w->w_conn))) {*/
-
-        /*switch (event->response_type & ~0x80) {*/
-        /*case XCB_EXPOSE:*/
-            /*xwin_event_expose(w, (xcb_expose_event_t *) event);*/
-            /*break;*/
-        /*case XCB_CONFIGURE_NOTIFY:*/
-            /*xwin_event_configure_notify(w, (xcb_configure_notify_event_t *) event);*/
-            /*break;*/
-        /*case XCB_KEY_PRESS:*/
-            /*{*/
-                /*xcb_key_press_event_t *kr = (xcb_key_press_event_t *) event;*/
-
-            /*}*/
-            /*xwin_repaint(w);*/
-            /*break;*/
-        /*case XCB_UNMAP_NOTIFY:*/
-            /*w->w_closed = 1;*/
-            /*free(event);*/
-            /*return;*/
-        /*default:*/
-            /*printf("Event %d\n", event->response_type & ~0x80);*/
-            /*break;*/
-        /*}*/
-
-        /*free(event);*/
-    /*}*/
 }
