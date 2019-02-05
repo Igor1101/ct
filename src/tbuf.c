@@ -4,9 +4,9 @@
 int xwin_tbuf_create(struct xwin_tbuf *t, int rows, int cols) {
     t->t_rows = rows;
     t->t_cols = cols;
-    t->t_lines = malloc(sizeof(char *) * rows);
-    t->t_dirty = malloc(sizeof(int) * rows);
-    t->t_vis_attrs = malloc(sizeof(int *) * rows);
+    t->t_lines = calloc(sizeof(char *), rows);
+    t->t_dirty = calloc(sizeof(int), rows);
+    t->t_vis_attrs = calloc(sizeof(int *), rows);
     t->t_cx = 0;
     t->t_cy = 0;
 

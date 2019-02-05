@@ -75,7 +75,42 @@ void xwin_font_ctx_destroy(struct xwin_font_ctx *f) {
     FT_Done_FreeType(f->f_ft_library);
 }
 
+int xwin_input_ctx_create(struct xwin_input_ctx *i, struct xwin *w) {
+    if (!(i->i_xim = XOpenIM(w->w_xdisplay, NULL, NULL, NULL))) {
+        return -1;
+    }
+
+    XIMStyles *styles;
+    XIMStyle xim_req_style;
+
+    if (XGetIMValues(i->i_xim, XNQueryInputStyle, &styles, NULL)) {
+        return -1;
+    }
+
+    for (int i = 0; i < styles->count_styles; ++i) {
+        printf("STYLE\n");
+    }
+
+
+
+    if (!(i->i_xic = XCreateIC(i->i_xim,
+                               XNInputStyle, XIMPreeditNothing | XIMStatusNothing,
+                               XNClientWindow, w->w_id,
+                               XNFocusWindow, w->w_id,
+                               NULL))) {
+        return -1;
+    }
+
+    return 0;
+}
+
 int xwin_create(struct xwin *w, const char *title, int width, int height) {
+    // Setup IM modifiers
+    const char *xmodifiers;
+    if ((xmodifiers = getenv("XMODIFIERS")) && XSetLocaleModifiers(xmodifiers) == NULL) {
+        return -1;
+    }
+
     if (xwin_tbuf_create(&w->w_tbuf, 25, 80) != 0) {
         return -1;
     }
@@ -84,7 +119,10 @@ int xwin_create(struct xwin *w, const char *title, int width, int height) {
         return -1;
     }
 
-    w->w_conn = xcb_connect(NULL, NULL);
+    if (!(w->w_xdisplay = XOpenDisplay(NULL))) {
+        return -1;
+    }
+    w->w_conn = XGetXCBConnection(w->w_xdisplay);
 
     if (!w->w_conn) {
         return -1;
@@ -112,7 +150,7 @@ int xwin_create(struct xwin *w, const char *title, int width, int height) {
     uint32_t window_hint_mask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK;
     const uint32_t window_hints[] = {
         w->w_screen->black_pixel,
-        XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_STRUCTURE_NOTIFY | XCB_EVENT_MASK_KEY_PRESS
+        XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_STRUCTURE_NOTIFY | XCB_EVENT_MASK_KEY_PRESS | XCB_EVENT_MASK_KEY_RELEASE
     };
 
     xcb_create_window(w->w_conn,
@@ -130,6 +168,10 @@ int xwin_create(struct xwin *w, const char *title, int width, int height) {
                       window_hints);
 
     xcb_map_window(w->w_conn, w->w_id);
+
+    if (xwin_input_ctx_create(&w->w_input, w) != 0) {
+        return -1;
+    }
 
     xcb_flush(w->w_conn);
 
@@ -189,10 +231,17 @@ static void s_xwin_draw_text(struct xwin *w, cairo_t *cr, double x, double y, co
 }
 
 static void s_xwin_paint(struct xwin *w, cairo_t *cr) {
+    if (!w->w_width_chars || !w->w_height_chars) {
+        return;
+    }
+
     uint64_t t0, t1;
     const struct xwin_font_ctx *f = &w->w_font;
 
     cairo_glyph_t *cairo_glyphs = cairo_glyph_allocate(w->w_width_chars);
+    if (!cairo_glyphs) {
+        return;
+    }
     cairo_save(cr);
     cairo_set_font_face(cr, w->w_font.f_cairo_face);
     cairo_set_font_size(cr, CT_FONT_SIZE);
@@ -234,17 +283,17 @@ void xwin_repaint(struct xwin *w) {
     cairo_destroy(cr);
 }
 
-void xwin_event_expose(struct xwin *w, const xcb_expose_event_t *e) {
-    int r0 = e->x / w->w_font.f_char_width;
-    int r1 = r0 + 1 + e->width / w->w_font.f_char_width;
-    for (int i = r0; i < r1 && i < w->w_tbuf.t_rows; ++i) {
-        xwin_tbuf_dirty(&w->w_tbuf, i);
-    }
+/*void xwin_event_expose(struct xwin *w, const xcb_expose_event_t *e) {*/
+    /*int r0 = e->x / w->w_font.f_char_width;*/
+    /*int r1 = r0 + 1 + e->width / w->w_font.f_char_width;*/
+    /*for (int i = r0; i < r1 && i < w->w_tbuf.t_rows; ++i) {*/
+        /*xwin_tbuf_dirty(&w->w_tbuf, i);*/
+    /*}*/
 
-    xwin_repaint(w);
-}
+    /*xwin_repaint(w);*/
+/*}*/
 
-void xwin_event_configure_notify(struct xwin *w, const xcb_configure_notify_event_t *e) {
+void xwin_event_configure_notify(struct xwin *w, const XConfigureEvent *e) {
     int res = 0;
 
     if (e->width && e->width != w->w_width) {
@@ -266,33 +315,98 @@ void xwin_event_configure_notify(struct xwin *w, const xcb_configure_notify_even
 }
 
 void xwin_poll_events(struct xwin *w) {
-    xcb_generic_event_t *event;
+    XEvent event;
 
-    while ((event = xcb_wait_for_event(w->w_conn))) {
+    while (XPending(w->w_xdisplay)) {
+        XNextEvent(w->w_xdisplay, &event);
 
-        switch (event->response_type & ~0x80) {
-        case XCB_EXPOSE:
-            xwin_event_expose(w, (xcb_expose_event_t *) event);
-            break;
-        case XCB_CONFIGURE_NOTIFY:
-            xwin_event_configure_notify(w, (xcb_configure_notify_event_t *) event);
-            break;
-        case XCB_KEY_PRESS:
-            {
-                xcb_key_press_event_t *kr = (xcb_key_press_event_t *) event;
-
-            }
-            xwin_repaint(w);
-            break;
-        case XCB_UNMAP_NOTIFY:
-            w->w_closed = 1;
-            free(event);
-            return;
-        default:
-            printf("Event %d\n", event->response_type & ~0x80);
-            break;
+        if (XFilterEvent(&event, None)) {
+            continue;
         }
 
-        free(event);
+        if (event.type == MappingNotify) {
+            XRefreshKeyboardMapping(&event.xmapping);
+            continue;
+        }
+        if (event.type == UnmapNotify) {
+            w->w_closed = 1;
+            return;
+        }
+
+        if (event.type == ConfigureNotify) {
+            xwin_event_configure_notify(w, (XConfigureEvent *) &event);
+            continue;
+        }
+
+        if (event.type == FocusIn || event.type == FocusOut) {
+            XFocusChangeEvent *e = (XFocusChangeEvent *) &event;
+
+            if (e->mode == NotifyGrab) {
+                continue;
+            }
+
+            if (event.type == FocusIn) {
+                XSetICFocus(w->w_input.i_xic);
+            }
+
+            continue;
+        }
+
+        if (event.type == Expose) {
+            xwin_repaint(w);
+            continue;
+        }
+
+        if (event.type == KeyPress) {
+            int count = 0;
+            KeySym keysym = 0;
+            char buf[20];
+            Status status = 0;
+            count = Xutf8LookupString(w->w_input.i_xic, (XKeyPressedEvent*)&event, buf, 20, &keysym, &status);
+
+            printf("count: %d\n", count);
+            if (status==XBufferOverflow)
+                printf("BufferOverflow\n");
+
+            if (count)
+                printf("buffer: %.*s\n", count, buf);
+
+            if (status == XLookupKeySym || status == XLookupBoth) {
+                printf("status: %d\n", status);
+            }
+            printf("pressed KEY: %d\n", (int)keysym);
+            continue;
+        }
+
+        printf("EVENT\n");
     }
+    /*xcb_generic_event_t *event;*/
+
+    /*while ((event = xcb_wait_for_event(w->w_conn))) {*/
+
+        /*switch (event->response_type & ~0x80) {*/
+        /*case XCB_EXPOSE:*/
+            /*xwin_event_expose(w, (xcb_expose_event_t *) event);*/
+            /*break;*/
+        /*case XCB_CONFIGURE_NOTIFY:*/
+            /*xwin_event_configure_notify(w, (xcb_configure_notify_event_t *) event);*/
+            /*break;*/
+        /*case XCB_KEY_PRESS:*/
+            /*{*/
+                /*xcb_key_press_event_t *kr = (xcb_key_press_event_t *) event;*/
+
+            /*}*/
+            /*xwin_repaint(w);*/
+            /*break;*/
+        /*case XCB_UNMAP_NOTIFY:*/
+            /*w->w_closed = 1;*/
+            /*free(event);*/
+            /*return;*/
+        /*default:*/
+            /*printf("Event %d\n", event->response_type & ~0x80);*/
+            /*break;*/
+        /*}*/
+
+        /*free(event);*/
+    /*}*/
 }

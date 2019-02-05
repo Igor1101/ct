@@ -5,6 +5,8 @@
 #include <hb.h>
 #include <cairo/cairo.h>
 #include <cairo/cairo-xcb.h>
+#include <X11/Xlib-xcb.h>
+#include <X11/Xlib.h>
 
 #define CT_FONT_SIZE 16
 #define CT_PAD_X     2
@@ -25,8 +27,8 @@ struct xwin_graph_ctx {
 };
 
 struct xwin_input_ctx {
-    uint16_t            i_xkb_version_major, i_xkb_version_minor;
-    uint8_t             i_xkb_base_event_out, i_xkb_base_event_err;
+    XIM                 i_xim;
+    XIC                 i_xic;
 };
 
 struct xwin_tbuf {
@@ -38,6 +40,7 @@ struct xwin_tbuf {
 };
 
 struct xwin {
+    Display                    *w_xdisplay;
     xcb_connection_t           *w_conn;
     xcb_window_t                w_id;
     const xcb_screen_t         *w_screen;
@@ -47,6 +50,7 @@ struct xwin {
     struct xwin_font_ctx        w_font;
     struct xwin_graph_ctx       w_graph;
     struct xwin_tbuf            w_tbuf;
+    struct xwin_input_ctx       w_input;
 };
 
 int xwin_font_ctx_create(struct xwin_font_ctx *f);
@@ -60,7 +64,7 @@ void xwin_tbuf_dirty_all(struct xwin_tbuf *t);
 void xwin_tbuf_scrollup(struct xwin_tbuf *t);
 void xwin_tbuf_move(struct xwin_tbuf *t, int t_cy, int t_cx);
 
-int xwin_input_ctx_create(struct xwin_input_ctx *i);
+int xwin_input_ctx_create(struct xwin_input_ctx *i, struct xwin *w);
 
 int xwin_create(struct xwin *w, const char *title, int width, int height);
 void xwin_destroy(struct xwin *w);
@@ -70,5 +74,6 @@ void xwin_paint_region(struct xwin *w, int r0, int c0, int r1, int c1);
 void xwin_repaint(struct xwin *w);
 
 void xwin_poll_events(struct xwin *w);
-void xwin_event_configure_notify(struct xwin *w, const xcb_configure_notify_event_t *e);
-void xwin_event_expose(struct xwin *w, const xcb_expose_event_t *e);
+void xwin_event_configure_notify(struct xwin *w, const XConfigureEvent *e);
+//void xwin_event_configure_notify(struct xwin *w, const xcb_configure_notify_event_t *e);
+//void xwin_event_expose(struct xwin *w, const xcb_expose_event_t *e);
