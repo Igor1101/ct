@@ -13,6 +13,7 @@
 #define CT_FONT_SIZE 16
 #define CT_PAD_X     2
 #define CT_PAD_Y     2
+#define CT_CURSOR    1
 
 struct xwin_font_ctx {
     FT_Library          f_ft_library;

@@ -94,9 +94,11 @@ void xwin_tbuf_putc(struct xwin_tbuf *t, wchar_t c, int attr) {
             if (t->t_cx) {
                 if (t->t_lines[t->t_cy]) {
                     if (t->t_lines[t->t_cy][t->t_cx]) {
-                        t->t_lines[t->t_cy][--t->t_cx] = ' ';
+                        --t->t_cx;
+                        /*t->t_lines[t->t_cy][--t->t_cx] = ' ';*/
                     } else {
-                        t->t_lines[t->t_cy][--t->t_cx] = 0;
+                        --t->t_cx;
+                        /*t->t_lines[t->t_cy][--t->t_cx] = 0;*/
                     }
                     t->t_dirty[t->t_cy] = 1;
                 }
@@ -105,7 +107,7 @@ void xwin_tbuf_putc(struct xwin_tbuf *t, wchar_t c, int attr) {
                     --t->t_cy;
                     t->t_cx = xwstrlen(t->t_lines[t->t_cy]);
                     if (t->t_cx) {
-                        t->t_lines[t->t_cy][--t->t_cx] = 0;
+                        /*t->t_lines[t->t_cy][--t->t_cx] = 0;*/
                         t->t_dirty[t->t_cy] = 1;
                     }
                 }
