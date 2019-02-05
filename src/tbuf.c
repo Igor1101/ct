@@ -4,7 +4,7 @@
 int xwin_tbuf_create(struct xwin_tbuf *t, int rows, int cols) {
     t->t_rows = rows;
     t->t_cols = cols;
-    t->t_lines = calloc(sizeof(char *), rows);
+    t->t_lines = calloc(sizeof(wchar_t *), rows);
     t->t_dirty = calloc(sizeof(int), rows);
     t->t_vis_attrs = calloc(sizeof(int *), rows);
     t->t_cx = 0;
@@ -14,7 +14,7 @@ int xwin_tbuf_create(struct xwin_tbuf *t, int rows, int cols) {
 }
 
 void xwin_tbuf_scrollup(struct xwin_tbuf *t) {
-    char *line0 = t->t_lines[0];
+    wchar_t * line0 = t->t_lines[0];
     int *vis0 = t->t_vis_attrs[0];
 
     for (int i = 0; i < t->t_rows - 1; ++i) {
@@ -36,13 +36,13 @@ void xwin_tbuf_move(struct xwin_tbuf *t, int y, int x) {
     t->t_cy = y;
 }
 
-static inline void xwin_tbuf_set(struct xwin_tbuf *t, int y, int x, char c, int attr) {
+static inline void xwin_tbuf_set(struct xwin_tbuf *t, int y, int x, wchar_t c, int attr) {
     if (!t->t_lines[y]) {
-        t->t_lines[y] = malloc(t->t_cols + 1);
+        t->t_lines[y] = malloc((t->t_cols + 1) * sizeof(wchar_t));
         t->t_vis_attrs[y] = malloc(sizeof(int) * t->t_cols);
         // Pad with spaces
-        memset(t->t_lines[y], ' ', x);
-        memset(t->t_lines[y] + x + 1, 0, t->t_cols - x);
+        memset(t->t_lines[y], ' ', x * sizeof(wchar_t));
+        memset(t->t_lines[y] + x + 1, 0, (t->t_cols - x) * sizeof(wchar_t));
         memset(t->t_vis_attrs[y], 0, t->t_cols * sizeof(int));
         // Zero-terminate
     }
@@ -52,7 +52,7 @@ static inline void xwin_tbuf_set(struct xwin_tbuf *t, int y, int x, char c, int 
     t->t_dirty[y] = 1;
 }
 
-void xwin_tbuf_putc(struct xwin_tbuf *t, char c, int attr) {
+void xwin_tbuf_putc(struct xwin_tbuf *t, wchar_t c, int attr) {
     if (c > '\n') {
         if (t->t_cx == t->t_cols - 2) {
             t->t_cx = 0;

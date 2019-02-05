@@ -199,11 +199,12 @@ void xwin_destroy(struct xwin *w) {
     xwin_font_ctx_destroy(&w->w_font);
 }
 
-static void s_xwin_draw_text(struct xwin *w, cairo_t *cr, double x, double y, const char *text, cairo_glyph_t *cairo_glyphs) {
+static void s_xwin_draw_text(struct xwin *w, cairo_t *cr, double x, double y, const wchar_t * text, cairo_glyph_t *cairo_glyphs) {
     struct xwin_font_ctx *f = &w->w_font;
+    size_t in_len = xwstrlen(text);
 
     hb_buffer_reset(f->f_hb_buffer);
-    hb_buffer_add_utf8(f->f_hb_buffer, text, -1, 0, -1);
+    hb_buffer_add_utf32(f->f_hb_buffer, text, -1, 0, -1);
     hb_buffer_set_direction(f->f_hb_buffer, HB_DIRECTION_LTR);
     hb_buffer_set_script(f->f_hb_buffer, HB_SCRIPT_LATIN);
 
@@ -212,14 +213,14 @@ static void s_xwin_draw_text(struct xwin *w, cairo_t *cr, double x, double y, co
     int len = hb_buffer_get_length(f->f_hb_buffer);
     const hb_glyph_info_t *glyph_info = hb_buffer_get_glyph_infos(f->f_hb_buffer, &len);
 
-    assert(len == strlen(text));
+    assert(len == in_len);
 
     for (int i = 0; i < len; ++i) {
         if (text[i] == ' ') {
             continue;
         }
 
-        cairo_set_source_rgb(cr, 0, (float) i / len, 0);
+        cairo_set_source_rgb(cr, 0, (float) (i + 1) / len, 0);
 
         hb_codepoint_t gid = glyph_info[i].codepoint;
         cairo_glyphs[i].index = gid;
@@ -304,21 +305,47 @@ void xwin_event_configure_notify(struct xwin *w, const XConfigureEvent *e) {
     }
 }
 
+static wchar_t s_utf8_to_wchar(const char *u) {
+    if (!u || !*u) {
+        return 0;
+    }
+
+    if (!(u[0] & ~0x7F)) {
+        return (wchar_t) u[0];
+    }
+
+    if (u[0] < 224) {
+        return ((char) ((u[0] & ~0xE0)) << 6) | ((char) (u[1] & ~0xC0));
+    }
+
+    return -1;
+}
+
 void xwin_event_key_press(struct xwin *w, XKeyPressedEvent *e) {
     char buf[16];
     int count = 0;
     Status status = 0;
     KeySym keysym;
+
     count = Xutf8LookupString(w->w_input.i_xic, e, buf, 16, &keysym, &status);
 
     if (status == XBufferOverflow) {
+        printf("Buffer overflow\n");
         return;
     }
 
-    if (count) {
-        for (int i = 0; i < count; ++i) {
-            xwin_tbuf_putc(&w->w_tbuf, buf[i], 0);
+    if (count > 0) {
+        if (count == 1 && !isprint(buf[0])) {
+            if (buf[0] == '\n') {
+                xwin_tbuf_putc(&w->w_tbuf, '\n', 0);
+                xwin_repaint(w);
+            }
+            return;
         }
+
+        wchar_t sym = s_utf8_to_wchar(buf);
+
+        xwin_tbuf_putc(&w->w_tbuf, sym, 0);
     }
 
     xwin_repaint(w);
@@ -371,7 +398,5 @@ void xwin_poll_events(struct xwin *w) {
             xwin_event_key_press(w, (XKeyPressedEvent *) &event);
             continue;
         }
-
-        printf("EVENT\n");
     }
 }

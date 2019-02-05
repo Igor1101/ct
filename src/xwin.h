@@ -7,6 +7,8 @@
 #include <cairo/cairo-xcb.h>
 #include <X11/Xlib-xcb.h>
 #include <X11/Xlib.h>
+#include <wchar.h>
+#include "wstr.h"
 
 #define CT_FONT_SIZE 16
 #define CT_PAD_X     2
@@ -32,7 +34,7 @@ struct xwin_input_ctx {
 };
 
 struct xwin_tbuf {
-    char **t_lines;
+    wchar_t * *t_lines;
     int **t_vis_attrs;
     int *t_dirty;
     int t_rows, t_cols;
@@ -63,14 +65,14 @@ void xwin_tbuf_dirty(struct xwin_tbuf *t, int row);
 void xwin_tbuf_dirty_all(struct xwin_tbuf *t);
 void xwin_tbuf_scrollup(struct xwin_tbuf *t);
 void xwin_tbuf_move(struct xwin_tbuf *t, int t_cy, int t_cx);
-void xwin_tbuf_putc(struct xwin_tbuf *t, char c, int a);
+void xwin_tbuf_putc(struct xwin_tbuf *t, wchar_t c, int a);
 
 int xwin_input_ctx_create(struct xwin_input_ctx *i, struct xwin *w);
 
 int xwin_create(struct xwin *w, const char *title, int width, int height);
 void xwin_destroy(struct xwin *w);
 
-void xwin_draw_text(struct xwin *w, cairo_t *cr, const char *text);
+void xwin_draw_text(struct xwin *w, cairo_t *cr, const wchar_t * text);
 void xwin_paint_region(struct xwin *w, int r0, int c0, int r1, int c1);
 void xwin_repaint(struct xwin *w);
 
