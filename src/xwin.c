@@ -5,6 +5,7 @@
 #include <hb-ft.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <ctype.h>
 
 #define XK_MISCELLANY
 #include <X11/keysymdef.h>
