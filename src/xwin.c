@@ -6,6 +6,9 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+#define XK_MISCELLANY
+#include <X11/keysymdef.h>
+
 static xcb_visualtype_t *s_get_screen_visualtype(const xcb_screen_t *screen) {
     for (xcb_depth_iterator_t it = xcb_screen_allowed_depths_iterator(screen);
          it.rem;
@@ -321,6 +324,30 @@ static wchar_t s_utf8_to_wchar(const char *u) {
     return -1;
 }
 
+static void xwin_event_key_type(struct xwin *w, wchar_t sym) {
+    xwin_tbuf_putc(&w->w_tbuf, sym, 0);
+}
+
+static void xwin_event_key_press_gen(struct xwin *w, KeySym keysym) {
+    switch (keysym) {
+    case XK_BackSpace:
+        // Send backspace to buffer
+        xwin_tbuf_putc(&w->w_tbuf, 8, 0);
+        break;
+    case XK_Return:
+        // Send return to buffer
+        xwin_tbuf_putc(&w->w_tbuf, '\n', 0);
+        break;
+    case XK_Tab:
+        // Tab
+        xwin_tbuf_putc(&w->w_tbuf, '\t', 0);
+        break;
+    default:
+        printf("Unhandled keypress: %04x\n", keysym);
+        break;
+    }
+}
+
 void xwin_event_key_press(struct xwin *w, XKeyPressedEvent *e) {
     char buf[16];
     int count = 0;
@@ -336,19 +363,14 @@ void xwin_event_key_press(struct xwin *w, XKeyPressedEvent *e) {
 
     if (count > 0) {
         if (count == 1 && !isprint(buf[0])) {
-            if (buf[0] == '\n') {
-                xwin_tbuf_putc(&w->w_tbuf, '\n', 0);
-                xwin_repaint(w);
-            }
-            return;
+            return xwin_event_key_press_gen(w, keysym);
         }
 
         wchar_t sym = s_utf8_to_wchar(buf);
-
-        xwin_tbuf_putc(&w->w_tbuf, sym, 0);
+        xwin_event_key_type(w, sym);
+    } else {
+        xwin_event_key_press_gen(w, keysym);
     }
-
-    xwin_repaint(w);
 }
 
 void xwin_poll_events(struct xwin *w) {
@@ -396,6 +418,7 @@ void xwin_poll_events(struct xwin *w) {
 
         if (event.type == KeyPress) {
             xwin_event_key_press(w, (XKeyPressedEvent *) &event);
+            xwin_repaint(w);
             continue;
         }
     }

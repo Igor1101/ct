@@ -69,12 +69,47 @@ void xwin_tbuf_putc(struct xwin_tbuf *t, wchar_t c, int attr) {
         t->t_cx++;
     } else {
         switch (c) {
-        case '\n':
+        case '\n':          // Line feed
             t->t_cx = 0;
             ++t->t_cy;
             break;
-        case '\r':
+        case '\r':          // Carriage return
             t->t_cx = 0;
+            break;
+        case '\t':
+            {
+                int oldc = t->t_cx;
+                int newc = oldc + (4 - (oldc + 4) % 4);
+                if (newc > t->t_cols - 2) {
+                    t->t_cx = 0;
+                    ++t->t_cy;
+                } else {
+                    for (int i = oldc; i < newc; ++i) {
+                        xwin_tbuf_putc(t, ' ', 127);
+                    }
+                }
+            }
+            break;
+        case 8:             // Backspace
+            if (t->t_cx) {
+                if (t->t_lines[t->t_cy]) {
+                    if (t->t_lines[t->t_cy][t->t_cx]) {
+                        t->t_lines[t->t_cy][--t->t_cx] = ' ';
+                    } else {
+                        t->t_lines[t->t_cy][--t->t_cx] = 0;
+                    }
+                    t->t_dirty[t->t_cy] = 1;
+                }
+            } else {
+                if (t->t_cy) {
+                    --t->t_cy;
+                    t->t_cx = xwstrlen(t->t_lines[t->t_cy]);
+                    if (t->t_cx) {
+                        t->t_lines[t->t_cy][--t->t_cx] = 0;
+                        t->t_dirty[t->t_cy] = 1;
+                    }
+                }
+            }
             break;
         default:
             xwin_tbuf_putc(t, '?', 0x00FF);
