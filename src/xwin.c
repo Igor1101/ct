@@ -40,7 +40,7 @@ int xwin_font_ctx_create(struct xwin_font_ctx *f) {
         return -1;
     }
 
-    if ((ft_error = FT_New_Face(f->f_ft_library, "/home/alnyan/.local/share/fonts/font.ttf", 0, &f->f_ft_face))) {
+    if ((ft_error = FT_New_Face(f->f_ft_library, CT_FONT_PATH, 0, &f->f_ft_face))) {
         fprintf(stderr, "Failed to load font face\n");
         return -1;
     }
