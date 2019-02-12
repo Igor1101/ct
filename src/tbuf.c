@@ -1,6 +1,22 @@
 #include "xwin.h"
 #include <assert.h>
 
+int xwin_tbuf_tty(struct xwin_tbuf *t) {
+    t->t_termios.c_oflag = 0;
+    t->t_termios.c_iflag = 0;
+    t->t_termios.c_cflag = CSIZE & CS8;
+
+    if (openpty(&t->t_pty_master, &t->t_pty_slave, t->t_pty_filename, &t->t_termios, &t->t_winp) < 0) {
+        return -1;
+    }
+
+    return 0;
+}
+
+int xwin_tbuf_poll(struct xwin_tbuf *t) {
+
+}
+
 int xwin_tbuf_create(struct xwin_tbuf *t, int rows, int cols) {
     t->t_rows = rows;
     t->t_cols = cols;
@@ -9,6 +25,10 @@ int xwin_tbuf_create(struct xwin_tbuf *t, int rows, int cols) {
     t->t_vis_attrs = calloc(sizeof(int *), rows);
     t->t_cx = 0;
     t->t_cy = 0;
+
+    if (xwin_tbuf_tty(t) != 0) {
+        return -1;
+    }
 
     return !t->t_lines;
 }
@@ -94,9 +114,11 @@ void xwin_tbuf_putc(struct xwin_tbuf *t, wchar_t c, int attr) {
             if (t->t_cx) {
                 if (t->t_lines[t->t_cy]) {
                     if (t->t_lines[t->t_cy][t->t_cx]) {
-                        t->t_lines[t->t_cy][--t->t_cx] = ' ';
+                        --t->t_cx;
+                        /*t->t_lines[t->t_cy][--t->t_cx] = ' ';*/
                     } else {
-                        t->t_lines[t->t_cy][--t->t_cx] = 0;
+                        --t->t_cx;
+                        /*t->t_lines[t->t_cy][--t->t_cx] = 0;*/
                     }
                     t->t_dirty[t->t_cy] = 1;
                 }
@@ -105,7 +127,7 @@ void xwin_tbuf_putc(struct xwin_tbuf *t, wchar_t c, int attr) {
                     --t->t_cy;
                     t->t_cx = xwstrlen(t->t_lines[t->t_cy]);
                     if (t->t_cx) {
-                        t->t_lines[t->t_cy][--t->t_cx] = 0;
+                        /*t->t_lines[t->t_cy][--t->t_cx] = 0;*/
                         t->t_dirty[t->t_cy] = 1;
                     }
                 }

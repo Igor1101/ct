@@ -203,8 +203,10 @@ void xwin_destroy(struct xwin *w) {
     xwin_font_ctx_destroy(&w->w_font);
 }
 
-static void s_xwin_draw_text(struct xwin *w, cairo_t *cr, double x, double y, const wchar_t * text, cairo_glyph_t *cairo_glyphs) {
+static void s_xwin_draw_text(struct xwin *w, cairo_t *cr, double x, double y, int j, cairo_glyph_t *cairo_glyphs) {
     struct xwin_font_ctx *f = &w->w_font;
+
+    const wchar_t *text = w->w_tbuf.t_lines[j];
     size_t in_len = xwstrlen(text);
 
     hb_buffer_reset(f->f_hb_buffer);
@@ -224,7 +226,14 @@ static void s_xwin_draw_text(struct xwin *w, cairo_t *cr, double x, double y, co
             continue;
         }
 
-        cairo_set_source_rgb(cr, 0, (float) (i + 1) / len, 0);
+        int attr = 0xFF - w->w_tbuf.t_vis_attrs[j][i] & 0xFF;
+        if (w->w_tbuf.t_cx == i && w->w_tbuf.t_cy == j) {
+            int o = attr & 0xFF;
+            attr &= ~0xFF;
+            attr |= 0xFF - o;
+        }
+
+        cairo_set_source_rgb(cr, attr / 255.0, attr / 255.0, attr / 255.0);
 
         hb_codepoint_t gid = glyph_info[i].codepoint;
         cairo_glyphs[i].index = gid;
@@ -260,19 +269,40 @@ static void s_xwin_paint(struct xwin *w, cairo_t *cr) {
         if (w->w_tbuf.t_dirty[i]) {
             for (int j = 0; j < w->w_tbuf.t_cols; ++j) {
                 int attr = w->w_tbuf.t_vis_attrs[i][j];
+                if (w->w_tbuf.t_cx == j && w->w_tbuf.t_cy == i) {
+                    int o = attr & 0xFF;
+                    attr &= ~0xFF;
+                    attr |= 0xFF - o;
+                }
 
                 cairo_set_source_rgb(cr, (attr & 0xFF) / 255.0, (attr & 0xFF) / 255.0, (attr & 0xFF) / 255.0);
                 cairo_rectangle(cr, CT_PAD_X + j * f->f_char_width, CT_PAD_Y + i * CT_FONT_SIZE, f->f_char_width, CT_FONT_SIZE);
                 cairo_fill(cr);
             }
 
-            s_xwin_draw_text(w, cr, CT_PAD_X, CT_PAD_Y + i * CT_FONT_SIZE + CT_FONT_SIZE, w->w_tbuf.t_lines[i], cairo_glyphs);
+            s_xwin_draw_text(w, cr, CT_PAD_X, CT_PAD_Y + i * CT_FONT_SIZE + CT_FONT_SIZE, i, cairo_glyphs);
             w->w_tbuf.t_dirty[i] = 0;
         }
     }
     t1 = s_millis();
     cairo_restore(cr);
     cairo_glyph_free(cairo_glyphs);
+
+    if (w->w_tbuf.t_cx >= 0
+     && w->w_tbuf.t_cy >= 0
+     && w->w_tbuf.t_cx < w->w_tbuf.t_cols
+     && w->w_tbuf.t_cy < w->w_tbuf.t_rows
+     && (!w->w_tbuf.t_lines[w->w_tbuf.t_cy] ||
+         !w->w_tbuf.t_lines[w->w_tbuf.t_cy][w->w_tbuf.t_cx]
+         )) {
+        cairo_set_source_rgb(cr, 1, 1, 1);
+        cairo_rectangle(cr,
+                        CT_PAD_X + w->w_tbuf.t_cx * f->f_char_width,
+                        CT_PAD_Y + w->w_tbuf.t_cy * CT_FONT_SIZE,
+                        f->f_char_width,
+                        CT_FONT_SIZE);
+        cairo_fill(cr);
+    }
 
     cairo_set_source_rgb(cr, 1, 0, 0);
     cairo_rectangle(cr, 0, 0, w->w_tbuf.t_cols * f->f_char_width, w->w_tbuf.t_rows * CT_FONT_SIZE);

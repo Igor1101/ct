@@ -8,11 +8,13 @@
 #include <X11/Xlib-xcb.h>
 #include <X11/Xlib.h>
 #include <wchar.h>
+#include <pty.h>
 #include "wstr.h"
 
 #define CT_FONT_SIZE 16
 #define CT_PAD_X     2
 #define CT_PAD_Y     2
+#define CT_CURSOR    1
 
 struct xwin_font_ctx {
     FT_Library          f_ft_library;
@@ -34,11 +36,15 @@ struct xwin_input_ctx {
 };
 
 struct xwin_tbuf {
-    wchar_t * *t_lines;
-    int **t_vis_attrs;
-    int *t_dirty;
-    int t_rows, t_cols;
-    int t_cx, t_cy;
+    wchar_t           **t_lines;
+    int               **t_vis_attrs;
+    int                *t_dirty;
+    int                 t_rows, t_cols;
+    int                 t_cx, t_cy;
+    struct termios      t_termios;
+    struct winsize      t_winp;
+    int                 t_pty_master, t_pty_slave;
+    char                t_pty_filename[4096];
 };
 
 struct xwin {
@@ -59,6 +65,7 @@ int xwin_font_ctx_create(struct xwin_font_ctx *f);
 void xwin_font_ctx_destroy(struct xwin_font_ctx *f);
 int xwin_font_ctx_load_glyph(struct xwin_font_ctx *f);
 
+int xwin_tbuf_tty(struct xwin_tbuf *t);
 int xwin_tbuf_create(struct xwin_tbuf *t, int rows, int cols);
 int xwin_tbuf_resize(struct xwin_tbuf *t, int rows, int cols);
 void xwin_tbuf_dirty(struct xwin_tbuf *t, int row);
@@ -66,6 +73,7 @@ void xwin_tbuf_dirty_all(struct xwin_tbuf *t);
 void xwin_tbuf_scrollup(struct xwin_tbuf *t);
 void xwin_tbuf_move(struct xwin_tbuf *t, int t_cy, int t_cx);
 void xwin_tbuf_putc(struct xwin_tbuf *t, wchar_t c, int a);
+int xwin_tbuf_poll(struct xwin_tbuf *t);
 
 int xwin_input_ctx_create(struct xwin_input_ctx *i, struct xwin *w);
 
